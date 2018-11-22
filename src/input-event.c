@@ -759,7 +759,7 @@ void daemon_init() {
 
     conf.configfile  = "/etc/input-event.conf";
 
-    conf.monitor     = 0;
+    conf.monitor     = 1;
     conf.verbose     = 0;
     conf.daemon      = 1;
 
