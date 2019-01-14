@@ -930,8 +930,16 @@ free:
                     input_powerkey_check(&event);
                 }
                 //input_dbus_report(&event);
-                input_parse_event(&event, conf.listen[i]);
-                if(event.type != EV_KEY){
+                //input_parse_event(&event, conf.listen[i]);
+                if(event.type == EV_SW){
+                    down_up->new_action = true;
+                    down_up->action = ACTION_ORDINARY_EVENT;
+                    down_up->key_code = event.code;
+                    down_up->value = event.value;
+                    down_up->key_time = tms_start;
+                    return;
+                }
+                else if(event.type != EV_KEY){
                     //printf("event.type is not EV_KEY\n");
                     continue;
                 }
