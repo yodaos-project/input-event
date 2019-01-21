@@ -29,6 +29,11 @@ static int MAX_SLIDE_DELAY_TIME = 500;
 static int TIME_OUT = 300;
 static bool HAS_SLIDE_EVENT;
 
+static const char *sw_config = "/etc/gpio.config";
+static int sw_keycode[MAX_LISTENER]={0};
+static int sw_keyvalue[MAX_LISTENER]={0};
+static int sw_keynumber = 0;
+
 // click =============================== start
 static int click_key_code = -1;
 static int click_key_count = 0;
@@ -885,6 +890,16 @@ free:
 
         gettimeofday(&tv_start, NULL);
         tms_start = tv_start.tv_sec * 1000 + tv_start.tv_usec / 1000;
+        if(sw_keynumber > 0)
+        {
+            sw_keynumber--;
+            down_up->new_action = true;
+            down_up->action = ACTION_ORDINARY_EVENT;
+            down_up->key_code = sw_keycode[sw_keynumber];
+            down_up->value = sw_keyvalue[sw_keynumber];
+            down_up->key_time = tms_start;
+            return;
+        }
 	select_r = -1;
 	while(select_r < 0){
 	    select_r = select(conf.listen_fd[fd_len-1]+1, &fdset, NULL, NULL, &tv);
@@ -1226,6 +1241,79 @@ void daemon_print_version() {
     exit(EXIT_SUCCESS);
 }
 
+int parse_gpio()
+{
+    FILE *fp;
+    char line[1024];
+    int j = 0;
+    char ch = ':';
+    char *gpio;
+    if((fp = fopen(sw_config,"r")) != NULL)
+    {
+        while(!feof(fp))
+        {
+            fgets(line, sizeof(line), fp);
+            if(line[strlen(line)-1] == '\n')
+            {
+                line[strlen(line)-1] = '\0';
+            }
+            if(line[0] == '\n' || line[0] == '\0' || line[0] == '\r')
+            {
+                continue;
+            }
+            else
+            {
+                gpio = strchr(line, ch);
+                if(gpio != NULL)
+                {
+                    *gpio = '\0';
+                    gpio++;
+                    while((*gpio != '/') && (*gpio != '\0'))
+                    {
+                        gpio++;
+                    }
+                    if(*gpio == '/')
+                    {
+                        int fd = open(gpio, O_RDONLY|O_NONBLOCK);
+                        if(fd < 0)
+                        {
+                            printf("open failed:%s\n",strerror(errno));
+                            continue;
+                        }
+                        else
+                        {
+                            unsigned char keyvalue;
+                            if(read(fd, &keyvalue, sizeof(keyvalue)) > 0)
+                            {
+                                sw_keycode[j] = atoi(line);
+                                if(keyvalue == '0')
+                                {
+                                    sw_keyvalue[j] = 0;
+                                }
+                                else if(keyvalue == '1')
+                                {
+                                    sw_keyvalue[j] = 1;
+                                }
+                                else
+                                {
+                                    printf("wrong value\n");
+                                    continue;
+                                }
+                                j++;
+                            }
+                            else
+                            {
+                                printf(" read failed\n");
+                            }
+
+                        }
+                    }
+                }
+            }
+        }
+    }
+    return j;
+}
 bool init_input_key(bool has_slide_event,int select_timeout,int double_click_timeout,int slide_timeout) {
 //    printf("init_input_key is called\n");
     HAS_SLIDE_EVENT = has_slide_event;
@@ -1258,8 +1346,8 @@ bool init_input_key(bool has_slide_event,int select_timeout,int double_click_tim
        }
 
 //        signal(SIGCHLD, SIG_IGN);
-
            FD_ZERO(&initial_fdset);
+           memset(sw_keycode, -1, sizeof(sw_keycode));
            for(i=0; i < MAX_LISTENER && conf.listen[i] != NULL; i++) {
                conf.listen_fd[i] = open(conf.listen[i], O_RDONLY);
 
@@ -1270,7 +1358,7 @@ bool init_input_key(bool has_slide_event,int select_timeout,int double_click_tim
                }
                FD_SET(conf.listen_fd[i], &initial_fdset);
            }
-
+           sw_keynumber = parse_gpio();
            fd_len = i;
             if(fd_len == 0) {
                printf(": no listener found!\n");
@@ -1292,124 +1380,3 @@ bool init_input_key(bool has_slide_event,int select_timeout,int double_click_tim
     //printf("conf.monitor is %d conf.file is %s \n",conf.monitor,conf.configfile);
     return  true;
 }
-
-
-//int main(int argc, char *argv[]) {
-    /*int result, arguments = 0;
-       static const struct option long_options[] = {
-           { "monitor",   no_argument,       0, 'm' },
-           { "list",      no_argument,       0, 'l' },
-           { "config",    required_argument, 0, 'c' },
-           { "verbose",   no_argument,       0, 'v' },
-           { "no-daemon", no_argument,       0, 'D' },
-           { "help",      no_argument,       0, 'h' },
-           { "version",   no_argument,       0, 'V' },
-           {NULL,         0,              NULL,  0  }
-       };
-
-       daemon_init();
-
-       if (DbusEnvInit(NULL)) {
-           fprintf(stderr, "input-event dbus env init failed.\n");
-           return EXIT_FAILURE;
-       }
-   	if (ChargeModeDetect()) {
-           fprintf(stderr, "input-event charge mode detect failed.\n");
-           return EXIT_FAILURE;
-   	}
-
-       atexit(daemon_clean);
-       signal(SIGTERM, daemon_clean);
-       signal(SIGINT,  daemon_clean);
-
-       while (optind < argc) {
-           result = getopt_long(argc, argv, "mlc:vDhV", long_options, NULL);
-           arguments++;
-
-           switch(result) {
-               case 'm': /* monitor */
-  /*                 if(arguments > 1 || optind < argc) {
-                       fprintf(stderr, PROGRAM": option --monitor "
-                           "can not be combined with other options!\n");
-                       return EXIT_FAILURE;
-                   }
-                   conf.monitor = 1;
-                   break;
-               case 'l': /* list */
- /*                  if(arguments > 1 || optind < argc) {
-                       fprintf(stderr, PROGRAM": option --list "
-                           "can not be combined with other options!\n");
-                       return EXIT_FAILURE;
-                   }
-                   input_open_all_listener();
-                   input_list_devices();
-                   return EXIT_SUCCESS;
-                   break;
-               case 'c': /* config */
- /*                  conf.configfile = optarg;
-                   break;
-               case 'v': /* verbose */
- /*                  conf.verbose = 1;
-                   break;
-               case 'D': /* no-daemon */
- /*                  conf.daemon = 0;
-                   break;
-               case 'h': /* help */
-/*                   daemon_print_help();
-                   break;
-               case 'V': /* version */
- /*                  daemon_print_version();
-                   break;
-               default: /* unknown */
- /*                  break;
-           }
-       }
-
-       if(conf.monitor) {
-           printf("input_open_all_listener\n");
-           input_open_all_listener();
-       } else {
-           printf("config_parse_file\n");
-           config_parse_file();
-       }
-
-        signal(SIGCHLD, SIG_IGN);
-
-           FD_ZERO(&initial_fdset);
-           for(i=0; i < MAX_LISTENER && conf.listen[i] != NULL; i++) {
-               conf.listen_fd[i] = open(conf.listen[i], O_RDONLY);
-
-               if(conf.listen_fd[i] < 0) {
-                   fprintf(stderr, PROGRAM": open(%s): %s\n",
-                       conf.listen[i], strerror(errno));
-                   exit(EXIT_FAILURE);
-               }
-               FD_SET(conf.listen_fd[i], &initial_fdset);
-           }
-
-           fd_len = i;
-
-           if(fd_len == 0) {
-               fprintf(stderr, PROGRAM": no listener found!\n");
-               return EXIT_FAILURE;
-           }
-
-           if(conf.verbose) {
-               fprintf(stderr, PROGRAM": Start listening on %d devices...\n", fd_len);
-           }
-
-           if(conf.monitor) {
-               printf(PROGRAM": Monitoring mode started. Press CTRL+C to abort.\n\n");
-           } else if(conf.daemon) {
-               if(daemon(1, conf.verbose) < 0) {
-                   perror(PROGRAM": daemon()");
-                   exit(EXIT_FAILURE);
-               }
-           }*/
- //       init();
-
-  /*      while(1){
-            daemon_start_listener();
-        }
-    return EXIT_SUCCESS;
-}*/
