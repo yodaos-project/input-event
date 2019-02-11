@@ -18,6 +18,8 @@
 #include <sys/reboot.h>
 #include "input-event.h"
 #include "input-event-table.h"
+#define LOG_TAG "input-event"
+#include "rklog/RKLog.h"
 
 static int i, select_r, fd_len;
 static unsigned long tms_start, tms_end, idle_time = 0;
@@ -901,6 +903,7 @@ free:
             return;
         }
 	select_r = -1;
+
 	while(select_r < 0){
 	    select_r = select(conf.listen_fd[fd_len-1]+1, &fdset, NULL, NULL, &tv);
 	}
@@ -912,7 +915,7 @@ free:
             perror(PROGRAM": select()");
             down_up->new_action = false;
             gest->new_action = false;
-            printf("select_r < 0\n");
+            RKLoge("select_r < 0\n");
             return;
         } else if(select_r == 0) {
             idle_time += conf.min_timeout;
@@ -966,14 +969,14 @@ free:
                     down_up->key_time = event.time.tv_sec * 1000 + event.time.tv_usec/1000;
                     down_up->key_timeval = event.time;
                 }
-
+                RKLogi("input_event[%d] type[%d] code[%d] value[%d] time[%ld]\n",i,event.type,event.code,event.value,down_up->key_time);
                 if(event.code == 0){
                     //printf("event.code is 0\n");
                     event.code = NONE_KEY_CODE;
                 }
                 tms_start = event.time.tv_sec * 1000 + event.time.tv_usec / 1000;
                 if(event.value ==2){
-                    printf("=============== long press ==================\n");
+                    RKLogi("=============== long press ==================\n");
                     click_key_code = -1;
                     click_time = 0;
                     click_key_count = 0;
@@ -1004,13 +1007,13 @@ free:
                     return;
                 }
                 if(HAS_SLIDE_EVENT && slide_event(gest,event.code,event.value,tms_start)){
-                    printf("===========slide============== \n");
+                    RKLogi("===========slide============== \n");
                     click_key_code = -1;
                     click_time = 0;
                     click_key_count = 0;
                     return;
                 }else if(click_event(gest,event.code,event.value,tms_start)){
-                    printf("===========click============== \n");
+                    RKLogi("===========click============== \n");
                     return;
                 }
             }
@@ -1019,7 +1022,7 @@ free:
 
 bool click_event(struct gesture * p_gesture,int key_code,int value,unsigned long event_time){//处理单击和双击事件
    if(value != 1){
-        printf("click gesture ignore key event up \n");
+        RKLogi("click gesture ignore key event up \n");
         return false;
    }
    if(click_time == 0){//重新开始click事件分析
@@ -1033,9 +1036,10 @@ bool click_event(struct gesture * p_gesture,int key_code,int value,unsigned long
         return false;
 
    }else{//已经有单击事件缓存了,
+        RKLogi("event_time:[%ld],click_time:[%ld]",event_time,click_time);
         if(click_key_code == key_code){//如果超时则上抛单击事件并且替换当前缓存事件为新的事件
             if(event_time - click_time > MAX_DOUBLE_CLICK_DELAY_TIME){
-                printf("last cache single click event: code is %d\n",click_key_code);
+                RKLogi("last cache single click event: code is %d\n",click_key_code);
                 p_gesture->action = ACTION_SINGLE_CLICK;
                 p_gesture->new_action = true;
                 p_gesture->key_code = click_key_code;
@@ -1044,7 +1048,7 @@ bool click_event(struct gesture * p_gesture,int key_code,int value,unsigned long
                 click_time = event_time;
                 return true;
             }else{//未超时 且key_code与上一次一致,需上抛双击事件
-                printf("double click event happened: code is %d\n",click_key_code);
+                RKLogi("double click event happened: code is %d\n",click_key_code);
                 click_key_code = -1;
                 click_key_count = 0;
                 click_time = 0;
@@ -1057,7 +1061,7 @@ bool click_event(struct gesture * p_gesture,int key_code,int value,unsigned long
         }else{//新事件与缓存事件的key code不一样,上抛缓存事件
             if(key_code == NONE_KEY_CODE){
                 if(event_time - click_time > MAX_DOUBLE_CLICK_DELAY_TIME){
-                    printf("last cache single click event: code is %d\n",click_key_code);
+                    RKLogi("last cache single click event: code is %d\n",click_key_code);
                     p_gesture->action = ACTION_SINGLE_CLICK;
                     p_gesture->new_action = true;
                     p_gesture->key_code = click_key_code;
@@ -1074,7 +1078,7 @@ bool click_event(struct gesture * p_gesture,int key_code,int value,unsigned long
 
 bool slide_event(struct gesture * p_gesture,int key_code,int value,unsigned long event_time){
     if(value !=1){
-        printf("slide gesture ignore key up event\n");
+        RKLogi("slide gesture ignore key up event\n");
         return false;
     }
 
@@ -1093,7 +1097,7 @@ bool slide_event(struct gesture * p_gesture,int key_code,int value,unsigned long
                 slide_time = 0;
                 return false;
             }else{//无效的key但是未超时继续等待
-                printf("wait for slide event code is %d\n",slide_key_code);
+                RKLogi("wait for slide event code is %d\n",slide_key_code);
                 p_gesture->new_action = false;
                 return false;
             }
@@ -1117,7 +1121,7 @@ bool slide_event(struct gesture * p_gesture,int key_code,int value,unsigned long
             prev_key_code = KEY_ARRAYS[prev_key_subscript];
             next_key_code = KEY_ARRAYS[next_key_subscript];
             if(key_code == prev_key_code){
-                printf("slide down event happened\n");
+                RKLogi("slide down event happened\n");
                 slide_key_code = key_code;
                 slide_time = event_time;
                 p_gesture->action = ACTION_SLIDE;
@@ -1125,7 +1129,7 @@ bool slide_event(struct gesture * p_gesture,int key_code,int value,unsigned long
                 p_gesture->new_action = true;
                 return true;
             }else if(key_code == next_key_code){
-                printf("slide up event happened\n");
+                RKLogi("slide up event happened\n");
                 slide_key_code = key_code;
                 slide_time = event_time;
                 p_gesture->action = ACTION_SLIDE;
@@ -1277,7 +1281,7 @@ int parse_gpio()
                         int fd = open(gpio, O_RDONLY|O_NONBLOCK);
                         if(fd < 0)
                         {
-                            printf("open failed:%s\n",strerror(errno));
+                            RKLoge("open failed:%s\n",strerror(errno));
                             continue;
                         }
                         else
@@ -1296,14 +1300,14 @@ int parse_gpio()
                                 }
                                 else
                                 {
-                                    printf("wrong value\n");
+                                    RKLoge("wrong value\n");
                                     continue;
                                 }
                                 j++;
                             }
                             else
                             {
-                                printf(" read failed\n");
+                                RKLoge(" read failed\n");
                             }
 
                         }
@@ -1338,10 +1342,10 @@ bool init_input_key(bool has_slide_event,int select_timeout,int double_click_tim
 
     conf.daemon = 0;
        if(conf.monitor) {
-           printf("input_open_all_listener\n");
+           RKLogi("input_open_all_listener\n");
            input_open_all_listener();
        } else {
-           printf("config_parse_file\n");
+           RKLogi("config_parse_file\n");
            config_parse_file();
        }
 
@@ -1352,7 +1356,7 @@ bool init_input_key(bool has_slide_event,int select_timeout,int double_click_tim
                conf.listen_fd[i] = open(conf.listen[i], O_RDONLY);
 
                if(conf.listen_fd[i] < 0) {
-                   printf( ": open(%s): %s\n",
+                   RKLogi( ": open(%s): %s\n",
                        conf.listen[i]);
                     return false;
                }
@@ -1361,16 +1365,16 @@ bool init_input_key(bool has_slide_event,int select_timeout,int double_click_tim
            sw_keynumber = parse_gpio();
            fd_len = i;
             if(fd_len == 0) {
-               printf(": no listener found!\n");
+               RKLogi(": no listener found!\n");
                return false;
            }
 
            if(conf.verbose) {
-               printf(" Start listening on %d devices...\n", fd_len);
+               RKLogi(" Start listening on %d devices...\n", fd_len);
            }
 
            if(conf.monitor) {
-               printf(PROGRAM": Monitoring mode started. Press CTRL+C to abort.\n");
+               RKLogi(PROGRAM": Monitoring mode started. Press CTRL+C to abort.\n");
            } else if(conf.daemon) {
                if(daemon(1, conf.verbose) < 0) {
                    perror(PROGRAM": daemon()");

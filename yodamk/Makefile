@@ -18,7 +18,7 @@ define Package/input-event
   SECTION:=libs
   CATEGORY:=rokid
   TITLE:=input-event
-  DEPENDS:=+libstdcpp
+  DEPENDS:=+libstdcpp +rklog
 endef
 
 define Package/input-event/description
